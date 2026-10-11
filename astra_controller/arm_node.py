@@ -20,6 +20,7 @@ def main(args=None):
     node.declare_parameter('device', '/dev/tty_puppet_right')
     node.declare_parameter('joint_names', [ "joint_r2", "joint_r3", "joint_r4", "joint_r5", "joint_r6" ])
     node.declare_parameter('gripper_joint_names', [ "joint_r7l", "joint_r7r" ])
+    node.declare_parameter('side', '')  # 'left' / 'right'。空なら joint_names から推定
 
     device = node.get_parameter('device').value
     joint_names = node.get_parameter('joint_names').value
@@ -28,7 +29,11 @@ def main(args=None):
     assert len(joint_names) == 5
     assert len(gripper_joint_names) == 2
 
-    arm_controller = ArmController(device)
+    side = node.get_parameter('side').value or None
+    if side is None:
+        side = 'left' if joint_names[0].startswith('joint_l') else 'right' if joint_names[0].startswith('joint_r') else None
+    logger.info(f'arm side: {side}')
+    arm_controller = ArmController(device, side=side)
     
     joint_state_publisher = node.create_publisher(sensor_msgs.msg.JointState, "joint_states", 10)
     gripper_joint_state_publisher = node.create_publisher(sensor_msgs.msg.JointState, "gripper_joint_states", 10)
