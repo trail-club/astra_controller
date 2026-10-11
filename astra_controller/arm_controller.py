@@ -26,6 +26,25 @@ class ArmController:
 
     GRIPPER_GEAR_R = 0.027 / 2
 
+    # 腕ごとの関節符号と可動域 (2026-10-04 実測, docs/context/motor.md)。
+    # 並びは [joint0, joint1, wrist(ID12), wrist(ID13), wrist(ID14), gripper]。
+    # sign: to_si_unit の値に掛けて URDF の正方向に合わせる (-1 = 逆向き)。
+    # min/max: URDF 座標系。関節は rad、グリッパは m (片顎の開き)。
+    #   関節は実測の可動域から両端 5° の余裕を引いた値。
+    #   グリッパの下限 -0.002 は全閉時の読み値のばらつきを許すため (原点をまたぐのは約 -0.023)。
+    ARM_PROFILES = {
+        "left": {
+            "sign": np.array([+1, -1, +1, +1, +1, +1]),
+            "min": np.array([*np.radians([-87, -62, -164, -156, -157]), -0.002]),
+            "max": np.array([*np.radians([85, 84, 165, 82, 93]), 0.055]),
+        },
+        "right": {
+            "sign": np.array([-1, -1, +1, +1, +1, +1]),
+            "min": np.array([*np.radians([-87, -86, -137, -76, -157]), -0.002]),
+            "max": np.array([*np.radians([88, 71, 133, 156, 157]), 0.055]),
+        },
+    }
+
     @staticmethod
     def to_si_unit(arr):
         arr = arr.copy()
@@ -42,7 +61,21 @@ class ArmController:
         arr = (-np.array(arr) / (2*math.pi) * 4096 + 2048).astype(int)
         return arr
 
-    def __init__(self, name, do_init=False):
+    def __init__(self, name, do_init=False, side=None):
+        if side is None:
+            lname = str(name).lower()
+            side = "left" if "left" in lname else "right" if "right" in lname else None
+        self.side = side
+        profile = self.ARM_PROFILES.get(side)
+        if profile is None:
+            logger.warning(f"side={side!r}: 腕ごとの符号・可動域を使わない (upstream 既定のまま)")
+            self.joint_sign = np.ones(6)
+            self.joint_min = self.JOINT_MIN
+            self.joint_max = self.JOINT_MAX
+        else:
+            self.joint_sign = profile["sign"]
+            self.joint_min = profile["min"]
+            self.joint_max = profile["max"]
         logger.info(f"Using device {name}")
 
         self.state_cb = None
@@ -132,7 +165,7 @@ class ArmController:
                     if self.pong_cb is not None:
                         self.pong_cb(struct.unpack('>HHHHHHxxxx', data[2:-1]))
                 elif data[1] == self.COMM_TYPE_FEEDBACK:
-                    position = self.to_si_unit(np.array(struct.unpack('>HHHHHHxxxx', data[2:-1])))
+                    position = self.to_si_unit(np.array(struct.unpack('>HHHHHHxxxx', data[2:-1]))) * self.joint_sign
                     this_time = time.time()
                     with self.lock:
                         if self.last_time is None:
@@ -171,7 +204,7 @@ class ArmController:
 
     def set_pos(self, pos):
         ok = True
-        for i, (p, mn, mx) in enumerate(zip(pos, self.JOINT_MIN, self.JOINT_MAX)):
+        for i, (p, mn, mx) in enumerate(zip(pos, self.joint_min, self.joint_max)):
             if not (mn <= p <= mx):
                 logger.error(f"Joint #{i+2} reach limit, min: {mn}, max: {mx}, current pos: {p}")
                 if self.error_cb is not None:
@@ -179,7 +212,7 @@ class ArmController:
                 # pos[i] = np.clip(pos[i], mn, mx)
                 ok = False
         if ok:
-            self.write(struct.pack('>BBHHHHHHxxxx', self.COMM_HEAD, self.COMM_TYPE_CTRL, *self.to_raw_unit(pos)))
+            self.write(struct.pack('>BBHHHHHHxxxx', self.COMM_HEAD, self.COMM_TYPE_CTRL, *self.to_raw_unit(np.asarray(pos, dtype=float) * self.joint_sign)))
 
     def set_torque(self, torque):
         self.write(struct.pack('>BBBxxxxxxxxxxxxxxx', self.COMM_HEAD, self.COMM_TYPE_TORQUE, torque))
