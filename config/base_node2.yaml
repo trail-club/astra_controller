@@ -1,0 +1,30 @@
+# Parameters of base_node2 (ODrive v3.6 over USB).
+# The meaning of each value is in PARAMS of astra_controller/base_node2.py.
+# "CAN": the CAN node (base_node, base_controller.py).
+/**:
+  ros__parameters:
+    serial_number: ""        # hex as odrivetool shows it; "" = first ODrive found
+    connect_timeout: 10.0
+    left_axis: 0             # M0 = left wheel (CAN node_id 0)
+    right_axis: 1
+    left_sign: -1            # CAN LEFT_INSTALL_DIR
+    right_sign: 1            # CAN RIGHT_INSTALL_DIR
+    wheel_diameter: 0.139    # CAN WHEEL_D [m]
+    wheel_separation: 0.44   # CAN WHEEL_BASE [m]
+    rate_hz: 20.0
+    cmd_timeout: 0.5
+    max_lead_turns: 2.0      # CAN MAX_POS_DIFF_IN_TURNS
+    stamped: true
+    publish_tf: true
+    odom_frame: odom
+    base_frame: base_footprint
+    input_mode: filter       # filter (speed ramp + position filter) | trap (as CAN)
+    filter_bandwidth: 10.0   # [rad/s] firmware input_filter_bandwidth (filter)
+    traj_vel_limit: 2.0      # [turn/s] = 0.87 m/s per wheel
+    traj_accel_limit: 2.0    # [turn/s^2] = 0.87 m/s^2 (CAN: 1)
+    traj_decel_limit: 2.0
+    pos_gain: -1.0           # < 0: keep the value saved on the ODrive
+    vel_gain: -1.0
+    vel_integrator_gain: -1.0
+    current_lim: -1.0
+    watchdog_timeout: 0.5
